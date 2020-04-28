@@ -7,11 +7,11 @@ function GetMineCraft
     Write-Verbose 'Checking for latest version of minecraft...';
     $jsonVersions = Invoke-WebRequest -Uri https://launchermeta.mojang.com/mc/game/version_manifest.json | ConvertFrom-Json;
     $minecraftLatestVersion = $jsonVersions.latest.release;
-    Write-Verbose 'Detected latest minecraft release is $minecraftLatestVersion';
+    Write-Verbose "Detected latest minecraft release is $minecraftLatestVersion";
     $minecraftVersions = $jsonVersions.versions;
     $jsonUrlLatestVersion = $minecraftVersions | Where-Object id -eq $minecraftLatestVersion;
     $jsonUrlLatestVersion = $jsonUrlLatestVersion.url;
-    Write-Verbose 'Detected latest minecraft release URL $jsonUrlLatestVersion';
+    Write-Verbose "Detected latest minecraft release URL $jsonUrlLatestVersion";
     Write-Verbose 'Download manifest';
     $jsonLatestVersion = Invoke-WebRequest -Uri $jsonUrlLatestVersion | ConvertFrom-Json;
     Write-Verbose 'Get the server download url';
@@ -24,11 +24,11 @@ function GetMineCraft
     if (!(test-path "$install_fullname") -or (Get-ChildItem "$install_fullname").Length -ne $installer_size ) 
     {
         Remove-Item "$install_fullname" -Force -ErrorAction SilentlyContinue;
-        Write-Verbose "Downloading latest folding executable: $install_fullname";
+        Write-Verbose "Downloading latest minecraft executable: $install_fullname";
         Write-Verbose "Saving to $install_fullname...";
         New-Item -ItemType Directory -Force -Path $working_dir | Out-Null;
         Invoke-WebRequest -Uri $installer -OutFile "$install_fullname";
     }
     
-    return $install_fullname;
+    return $install_fname;
 }

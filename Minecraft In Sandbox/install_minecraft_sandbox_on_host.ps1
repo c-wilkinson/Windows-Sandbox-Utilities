@@ -5,6 +5,74 @@
     
 )
 
+function CreateLogonScript
+{
+    [cmdletbinding()]
+    param(
+        [Parameter(Mandatory=$true)][string]$java_installer,
+        [Parameter(Mandatory=$true)][string]$minecraft_installer
+    )
+    Write-Verbose 'Creating init command...'
+    $working_dir = "$env:USERPROFILE\minecraft_conf";
+    $logon_cmd = "$working_dir\init.cmd"
+    $wdg_install_dir = 'C:\users\wdagutilityaccount\desktop\minecraft_conf'
+    Write-Verbose "Saved logon script to $logon_cmd, this will be run upon starting Sandbox."
+    New-Item -Force -Path $logon_cmd -ItemType File | Out-Null;
+    # TODO: INSTALL JAVA HERE!!
+    Set-Content -Path $logon_cmd -Value @"
+java -Xmx1024M -Xms1024M -jar $wdg_install_dir\$minecraft_installer nogui
+"@;
+    # Create the Sandbox configuration file with the new working dir & LogonCommand.
+    $sandbox_conf = "$working_dir\minecraft_sandbox.wsb";
+    Write-Verbose "Creating sandbox configuration file to $sandbox_conf";
+    New-Item -Force -Path $sandbox_conf -ItemType File | Out-Null;
+    Set-Content -Path $sandbox_conf -Value @"
+<Configuration>
+    <VGpu>Enable</VGpu>
+    <MappedFolders>
+        <MappedFolder>
+            <HostFolder>$working_dir</HostFolder>
+            <ReadOnly>true</ReadOnly>
+        </MappedFolder>
+    </MappedFolders>
+    <LogonCommand>
+        <Command>$wdg_install_dir\init.cmd</Command>
+    </LogonCommand>
+</Configuration>
+"@;
+}
+
+function GetJava
+{
+    [cmdletbinding()]
+    param(
+    )
+    if ([Environment]::Is64BitOperatingSystem)
+    {
+        $installer=(Invoke-WebRequest -UseBasicParsing https://www.java.com/en/download/manual.jsp).Content |     ForEach-Object{[regex]::matches($_, '(?:<a title="Download Java software for Windows \(64-bit\)" href=")(.*)(?:">)').Groups[1].Value};
+    }
+    else
+    {
+        $installer=(Invoke-WebRequest -UseBasicParsing https://www.java.com/en/download/manual.jsp).Content | ForEach-Object{[regex]::matches($_, '(?:<a title="Download Java software for Windows Online" href=")(.*)(?:">)').Groups[1].Value};
+    }
+    
+    # Check if the installer is present, download otherwise.
+    $installer_size =(Invoke-WebRequest $installer -Method Head -UseBasicParsing).Headers.'Content-Length';
+    $working_dir = "$env:USERPROFILE\minecraft_conf";
+    $install_fname = "jre.exe";
+    $install_fullname = "$working_dir\$install_fname";
+    if (!(test-path "$install_fullname") -or (Get-ChildItem "$install_fullname").Length -ne $installer_size ) 
+    {
+        Remove-Item "$install_fullname" -Force -ErrorAction SilentlyContinue;
+        Write-Verbose "Downloading latest Java executable: $install_fullname";
+        Write-Verbose "Saving to $install_fullname...";
+        New-Item -ItemType Directory -Force -Path $working_dir | Out-Null;
+        Invoke-WebRequest -Uri $installer -OutFile "$install_fullname";
+    }
+    
+    return $install_fname;
+}
+
 function GetMineCraft
 {
     [cmdletbinding()]
@@ -13,11 +81,11 @@ function GetMineCraft
     Write-Verbose 'Checking for latest version of minecraft...';
     $jsonVersions = Invoke-WebRequest -Uri https://launchermeta.mojang.com/mc/game/version_manifest.json | ConvertFrom-Json;
     $minecraftLatestVersion = $jsonVersions.latest.release;
-    Write-Verbose 'Detected latest minecraft release is $minecraftLatestVersion';
+    Write-Verbose "Detected latest minecraft release is $minecraftLatestVersion";
     $minecraftVersions = $jsonVersions.versions;
     $jsonUrlLatestVersion = $minecraftVersions | Where-Object id -eq $minecraftLatestVersion;
     $jsonUrlLatestVersion = $jsonUrlLatestVersion.url;
-    Write-Verbose 'Detected latest minecraft release URL $jsonUrlLatestVersion';
+    Write-Verbose "Detected latest minecraft release URL $jsonUrlLatestVersion";
     Write-Verbose 'Download manifest';
     $jsonLatestVersion = Invoke-WebRequest -Uri $jsonUrlLatestVersion | ConvertFrom-Json;
     Write-Verbose 'Get the server download url';
@@ -30,13 +98,13 @@ function GetMineCraft
     if (!(test-path "$install_fullname") -or (Get-ChildItem "$install_fullname").Length -ne $installer_size ) 
     {
         Remove-Item "$install_fullname" -Force -ErrorAction SilentlyContinue;
-        Write-Verbose "Downloading latest folding executable: $install_fullname";
+        Write-Verbose "Downloading latest minecraft executable: $install_fullname";
         Write-Verbose "Saving to $install_fullname...";
         New-Item -ItemType Directory -Force -Path $working_dir | Out-Null;
         Invoke-WebRequest -Uri $installer -OutFile "$install_fullname";
     }
     
-    return $install_fullname;
+    return $install_fname;
 }
 
 function VerifyBios
@@ -124,7 +192,22 @@ function VerifySandbox
         }
         
         Write-Output 'Download minecraft server...';
-        $installer_fullname = GetMineCraft;
+        $minecraft_installer_fullname = GetMineCraft;
+        Write-Verbose "Downloaded $minecraft_installer_fullname";
+        Write-Output 'Download JRE...';
+        $java_installer_fullname = GetJava;
+        Write-Verbose "Downloaded $java_installer_fullname";
+        Write-Output 'Create logon script...';
+        CreateLogonScript -java_installer $java_installer_fullname -minecraft_installer $minecraft_installer_fullname;
+        Write-Output 'Start sandbox...';
+        $config = "$env:USERPROFILE\minecraft_conf\minecraft_sandbox.wsb";
+        Write-Verbose "Start-Process 'C:\WINDOWS\system32\WindowsSandbox.exe' -ArgumentList '$config';";
+        $proc = Start-Process 'C:\WINDOWS\system32\WindowsSandbox.exe' -ArgumentList $config;
+        do 
+        {
+            start-sleep -Milliseconds 500;
+        }
+        until ($proc.HasExited);
     }
     catch
     {

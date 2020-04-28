@@ -2,6 +2,7 @@ cls
 Write-Output "Loop over $PSScriptRoot to find modules";
 foreach($folder in (Get-ChildItem $PSScriptRoot -Directory))
 {
+    # Ignore "common" and "install with chocolatey", as they're not modules we want to transform to a script
     if ($folder.Name -ne "Common" -and $folder.Name -ne "Install with Chocolatey")
     {
         Write-Verbose "Get filename for $folder";
